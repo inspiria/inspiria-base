@@ -1,0 +1,63 @@
+@startuml
+
+title Distributing Content via API Polling
+
+box "EdTech Books" #LightBlue
+    participant "Author" as author
+    participant "EdTech Books" as edTechBooks
+end box
+
+box "Inspiria" #LightGreen
+    participant "Content Updater" as contentUpdater
+    participant "MPN Server" as mpnServer
+    participant "Mobile App" as mobileApp
+    participant "API" as api
+    participant "Database" as database
+end box
+
+==Author updates a book==
+author -> edTechBooks: Update Book
+...some time later...
+==Poll for updated books==
+contentUpdater -> edTechBooks++: Get Books
+note right: on a schedule
+activate contentUpdater
+edTechBooks --> contentUpdater--: Books
+contentUpdater -> database++: Query Books
+database --> contentUpdater--: Books
+loop #DDDDDD for each book with a newer timestamp
+    ==Fetch book, update database==
+    contentUpdater -> edTechBooks++: GET Book
+    edTechBooks --> contentUpdater--: Book
+    contentUpdater -> api++: PUT /books/{id}?content={content}
+    api -> database++: Update Book
+    database --> api--: Success
+    api --> contentUpdater: 200 OK
+    note right: Enqueue
+    deactivate contentUpdater
+    loop #CCCCCC for each mobile app instance that has this book downloaded
+        ==Queue notification for mobile app==
+        api -> mpnServer++: Book Updated
+        note right: Flag
+        mpnServer --> api: ACK
+        note left: Enqueue
+        note right: Dequeue
+        deactivate api
+        ==Push notification to mobile app==
+        mpnServer -> mobileApp++: Book Updated
+        note left: Flag
+        mobileApp --> mpnServer: ACK
+        note right: Enqueue
+        note left: Dequeue
+        deactivate mpnServer
+        ==Download new book==
+        mobileApp -> api++: GET /book/{id}
+        note left: Flag
+        api -> database++: Query Book
+        database --> api--: Book
+        api --> mobileApp--: Book
+        note left: Dequeue
+        deactivate mobileApp
+    end
+end
+@enduml
